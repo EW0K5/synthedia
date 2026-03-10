@@ -12,6 +12,7 @@
 ## v1.0.1
 - Added ```--write_params``` argument
 - Added ```--output_label``` prefix to logging and pickle files
+- Fixed crash in `peptide.get_limits` when the ms_clip_window produced an empty mask; now logs a warning and returns an empty slice instead of exiting. Added guards to calculate_feature_windows to avoid zero-width windows and additional debug logging in mzml.py.
 
 ## v1.0.0
 - First public release of synthedia

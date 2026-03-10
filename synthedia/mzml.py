@@ -1,4 +1,4 @@
-import os, copy, random, math, sys
+import os, copy, random, math, sys, logging
 from pyopenms import *
 from .peak_models import *
 
@@ -282,9 +282,16 @@ class Spectrum():
             stdev = options.ms2_stdev
             min_peak_intensity = options.ms2_min_peak_intensity
 
+        logger = logging.getLogger("assembly_logger")
         for peaki, peak in enumerate(peaks):
-
-            lower_limit, higher_limit, indicies = peak.get_limits(options, self.mzs, groupi, samplei)
+            try:
+                lower_limit, higher_limit, indicies = peak.get_limits(options, self.mzs, groupi, samplei)
+            except Exception as e:
+                logger.error(
+                    "spectrum.add_profile_peaks: get_limits failed group=%s sample=%s peaki=%s base_mz=%s window=%s error=%s",
+                    groupi, samplei, peaki, peak.base_mz, options.ms_clip_window, e
+                )
+                raise
             self.indicies.extend(indicies)
 
             # apply offset to peak intensity

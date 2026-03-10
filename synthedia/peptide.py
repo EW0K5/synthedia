@@ -1,4 +1,5 @@
 import math, random, sys, copy
+import logging
 import numpy as np
 from pyteomics import mass, fasta
 
@@ -90,22 +91,40 @@ class Peak():
         return max(self.max_fragment_intensity[groupi][samplei])
 
     def get_limits(self, options, mzs, groupi, samplei):
+        logger = logging.getLogger("assembly_logger")
+        # if we have already calculated limits, return them directly
         try:
             return self.lower_limit, self.higher_limit, self.indicies
         except AttributeError:
-            mz_mask = np.where(
-                (mzs > self.peak_mz_list[groupi][samplei] - options.ms_clip_window)
-                &
-                (mzs < self.peak_mz_list[groupi][samplei] + options.ms_clip_window)
+            pass
+
+        # compute mask of mz values within the clipping window
+        base_mz = self.peak_mz_list[groupi][samplei]
+        mz_mask = np.where(
+            (mzs > base_mz - options.ms_clip_window)
+            &
+            (mzs < base_mz + options.ms_clip_window)
+        )
+
+        if mz_mask[0].size == 0:
+            # no points found inside the window; this can happen when
+            # ms_clip_window becomes smaller than the m/z grid spacing or
+            # when a peak falls between discrete m/z values. Instead of
+            # crashing, log a warning and return an empty slice.
+            logger.warning(
+                "get_limits empty mask group=%s sample=%s base_mz=%s window=%s mz_count=%s",
+                groupi, samplei, base_mz, options.ms_clip_window, len(mzs)
             )
-            try:
-                self.lower_limit = mz_mask[0].min()
-                self.higher_limit = mz_mask[0].max()
-            except:
-                print('error getting limits - exiting')
-                sys.exit()
-            self.indicies = mz_mask[0]
+            self.lower_limit = 0
+            self.higher_limit = 0
+            self.indicies = np.array([], dtype=int)
             return self.lower_limit, self.higher_limit, self.indicies
+
+        # normal case: take the min/max indices
+        self.lower_limit = mz_mask[0].min()
+        self.higher_limit = mz_mask[0].max()
+        self.indicies = mz_mask[0]
+        return self.lower_limit, self.higher_limit, self.indicies
 
     def set_peak_intensities(self, options, peak_intensities, groupi, samplei):
         self.profile_intensity_list[groupi].append(peak_intensities)
@@ -513,7 +532,23 @@ def calculate_feature_windows(options, peptides, spectra):
     mask = np.where(peak_ints > min_intensity)
     peak_mzs = mzs[mask]
 
-    options.ms_clip_window = max(peak_mzs) - min(peak_mzs)
+    if len(peak_mzs) > 0:
+        options.ms_clip_window = max(peak_mzs) - min(peak_mzs)
+        # guarantee that the window is at least one m/z grid step so that
+        # the subsequent strict inequalities in `get_limits` can match a
+        # value.  if the value is effectively zero we keep the previous
+        # (default) clip window since a single m/z point cannot define a
+        # range.
+        min_step = point_diff if 'point_diff' in locals() else 0
+        if options.ms_clip_window < min_step:
+            options.ms_clip_window = max(options.ms_clip_window, min_step)
+    else:
+        # no peaks produced any intensity above threshold; leave the clip window
+        # unchanged and warn so investigators can inspect the spectrum setup.
+        logging.getLogger("assembly_logger").warning(
+            "calculate_feature_windows: no peak m/z values exceeded intensity threshold;\n"
+            "retaining existing ms_clip_window=%%s", options.ms_clip_window
+        )
     return
 
 def get_isotope_pattern(options, unique_sequences):

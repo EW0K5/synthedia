@@ -298,6 +298,21 @@ def test_n_MS_points_narrow():
     n_pionts = get_n_chromatographic_points_for_ms_level(1)
     assert n_pionts == len(rts)
 
+
+def test_get_limits_empty_mask():
+    """Regression test for issue when ms_clip_window is too small."""
+    from synthedia.peptide import Peak
+    create_test_dir()
+    opts = update_param({})
+    # create a single peak with a known base mz
+    peak = Peak(opts, mz=500.0, intensity=100.0)
+    # manually set a tiny clip window and a sparse m/z array that does not
+    # include any values in the window when strict inequalities are used
+    opts.ms_clip_window = 0.0
+    mzs = np.array([100.0, 200.0, 300.0])
+    lower, higher, idx = peak.get_limits(opts, mzs, 0, 0)
+    assert lower == 0 and higher == 0 and len(idx) == 0
+
 def test_n_MS_points_wide():
     create_test_dir()
     options = update_param({'prosit': os.path.join(TEST_RESOURCES, 'myPrositLib.csv'), 'centroid_ms1': True, 'rt_peak_fwhm': 10})
