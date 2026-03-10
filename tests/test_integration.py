@@ -313,6 +313,35 @@ def test_get_limits_empty_mask():
     lower, higher, idx = peak.get_limits(opts, mzs, 0, 0)
     assert lower == 0 and higher == 0 and len(idx) == 0
 
+
+def test_add_profile_peaks_empty_intensities(monkeypatch):
+    """Spectrum.add_profile_peaks should tolerate an empty intensity array.
+
+    This simulates the downstream crash that occurred when the mask from
+    :meth:`peptide.Peak.get_limits` produced no indices; the resulting
+    intensities array was zero-length causing ``max()`` to throw.
+    The new guard should simply log a warning and continue.
+    """
+    from synthedia.assembly import Spectrum
+    from synthedia.peptide import Peak
+
+    create_test_dir()
+    opts = update_param({})
+
+    # build a minimal spectrum for MS1
+    spec = Spectrum(synthedia_id=0, rt=0, order=1, isolation_range=None, options=opts)
+    spec.mzs = np.array([1.0, 2.0, 3.0])
+    spec.ints = np.zeros(3)
+    spec.indicies = []
+
+    # create a simple peak and monkey‑patch to simulate empty intensities
+    peak = Peak(opts, mz=100.0, intensity=10.0)
+    monkeypatch.setattr(peak, 'get_peak_intensities', lambda groupi, samplei: np.array([]))
+    monkeypatch.setattr(peak, 'get_limits', lambda options, mzs, groupi, samplei: (0, 0, []))
+
+    # should execute without raising
+    spec.add_profile_peaks(opts, peak, 0, 0)
+
 def test_n_MS_points_wide():
     create_test_dir()
     options = update_param({'prosit': os.path.join(TEST_RESOURCES, 'myPrositLib.csv'), 'centroid_ms1': True, 'rt_peak_fwhm': 10})

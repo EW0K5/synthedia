@@ -1,4 +1,5 @@
 import os, copy, random, math, sys, logging
+import numpy as np
 from pyopenms import *
 from .peak_models import *
 
@@ -311,6 +312,16 @@ class Spectrum():
                 peak.set_peak_intensities(options, peak_ints, groupi, samplei)
 
             peak_ints = peak.get_peak_intensities( groupi, samplei )
+
+            # guard against rare case where no intensities were generated
+            if peak_ints.size == 0:
+                logger = logging.getLogger("assembly_logger")
+                logger.warning(
+                    "spectrum.add_profile_peaks: empty peak_ints for group=%s sample=%s peaki=%s base_mz=%s",
+                    groupi, samplei, peaki, peak.base_mz
+                )
+                # nothing to add for this peak
+                continue
 
             # scale peak intensities by chromatogram scaling factor
             factor = adjusetd_raw_int * intensity_scale_factor
