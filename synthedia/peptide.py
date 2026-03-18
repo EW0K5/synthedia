@@ -366,8 +366,12 @@ class SyntheticPeptide():
             self.intensity = float(options.preview_abundance)
 
         self.ms2_mzs = [float(_) for _ in prosit_entry['FragmentMz'].to_list()]
-        print(prosit_entry['RelativeIntensity'].to_list())
-        self.ms2_ints = [float(_)*self.intensity for _ in prosit_entry['RelativeIntensity'].to_list()]
+        try:
+            self.ms2_ints = [float(_)*self.intensity for _ in prosit_entry['RelativeIntensity'].to_list()]
+        except TypeError:
+            logging.getLogger("assembly_logger").warning(
+                "Unexpected Float value forcing float round  %s",self.intensity)
+            self.ms2_ints = [float(_)*int(self.intensity) for _ in prosit_entry['RelativeIntensity'].to_list()]
         self.ms2_peaks = list(zip(self.ms2_mzs, self.ms2_ints))
         return
 
