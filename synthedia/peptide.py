@@ -8,6 +8,124 @@ PROTON = 1.007276
 IAA = 57.02092
 ONE_MILLION = 1000000
 
+
+
+def convert_concentration_gl_to_synthedia_intensity(
+    concentration_grams_per_liter,
+    reference_min_concentration_gl=1e-8,
+    reference_max_concentration_gl=40.0,
+    output_min_intensity=200.0,
+    output_max_intensity=5e6,
+    zero_guard_epsilon=1e-15,
+):
+    """
+    Convert concentration (g/L) to a Synthedia intensity value.
+
+    Returns:
+        intensity_value (float): intensity in Synthedia scale
+        concentration_is_zero_or_invalid (bool): True if concentration <= 0 or invalid
+    """
+    if reference_max_concentration_gl <= reference_min_concentration_gl:
+        raise ValueError("reference_max_concentration_gl must be greater than reference_min_concentration_gl")
+
+    if output_min_intensity <= 0 or output_max_intensity <= output_min_intensity:
+        raise ValueError("Require 0 < output_min_intensity < output_max_intensity")
+
+    logger = logging.getLogger("assembly_logger")
+    if concentration_grams_per_liter > reference_max_concentration_gl:
+        logger.warning(
+            "Concentration %s g/L exceeds reference max %s g/L; capping to reference max for intensity mapping",
+            concentration_grams_per_liter, reference_max_concentration_gl
+        )
+    if concentration_grams_per_liter < reference_min_concentration_gl and concentration_grams_per_liter > 0:
+        logger.warning(
+            "Concentration %s g/L is below reference min %s g/L; capping to reference min for intensity mapping",
+            concentration_grams_per_liter, reference_min_concentration_gl
+        )
+
+    try:
+        parsed_concentration_gl = float(concentration_grams_per_liter)
+    except (TypeError, ValueError):
+        return 0.0, True
+
+    if not math.isfinite(parsed_concentration_gl) or parsed_concentration_gl <= 0:
+        # Explicitly preserve biological zero as simulated zero.
+        return 0.0, True
+
+    safe_concentration_gl = max(parsed_concentration_gl, zero_guard_epsilon)
+
+    log10_concentration = math.log10(safe_concentration_gl)
+    log10_reference_min = math.log10(reference_min_concentration_gl)
+    log10_reference_max = math.log10(reference_max_concentration_gl)
+
+    normalized_position_0_to_1 = (
+        (log10_concentration - log10_reference_min)
+        / (log10_reference_max - log10_reference_min)
+    )
+    normalized_position_0_to_1 = max(0.0, min(1.0, normalized_position_0_to_1))
+
+    log2_output_min = math.log2(output_min_intensity)
+    log2_output_max = math.log2(output_max_intensity)
+    mapped_log2_intensity = (
+        log2_output_min
+        + normalized_position_0_to_1 * (log2_output_max - log2_output_min)
+    )
+
+    mapped_intensity_value = 2 ** mapped_log2_intensity
+    return mapped_intensity_value, False
+
+def convert_concentration_gl_to_synthedia_intensity(
+    concentration_grams_per_liter,
+    reference_min_concentration_gl=1e-8,
+    reference_max_concentration_gl=40.0,
+    output_min_intensity=200.0,
+    output_max_intensity=5e6,
+    zero_guard_epsilon=1e-15,
+):
+    """
+    Convert concentration (g/L) to a Synthedia intensity value.
+
+    Returns:
+        intensity_value (float): intensity in Synthedia scale
+        concentration_is_zero_or_invalid (bool): True if concentration <= 0 or invalid
+    """
+    if reference_max_concentration_gl <= reference_min_concentration_gl:
+        raise ValueError("reference_max_concentration_gl must be greater than reference_min_concentration_gl")
+
+    if output_min_intensity <= 0 or output_max_intensity <= output_min_intensity:
+        raise ValueError("Require 0 < output_min_intensity < output_max_intensity")
+
+    try:
+        parsed_concentration_gl = float(concentration_grams_per_liter)
+    except (TypeError, ValueError):
+        return 0.0, True
+
+    if not math.isfinite(parsed_concentration_gl) or parsed_concentration_gl <= 0:
+        # Explicitly preserve biological zero as simulated zero.
+        return 0.0, True
+
+    safe_concentration_gl = max(parsed_concentration_gl, zero_guard_epsilon)
+
+    log10_concentration = math.log10(safe_concentration_gl)
+    log10_reference_min = math.log10(reference_min_concentration_gl)
+    log10_reference_max = math.log10(reference_max_concentration_gl)
+
+    normalized_position_0_to_1 = (
+        (log10_concentration - log10_reference_min)
+        / (log10_reference_max - log10_reference_min)
+    )
+    normalized_position_0_to_1 = max(0.0, min(1.0, normalized_position_0_to_1))
+
+    log2_output_min = math.log2(output_min_intensity)
+    log2_output_max = math.log2(output_max_intensity)
+    mapped_log2_intensity = (
+        log2_output_min
+        + normalized_position_0_to_1 * (log2_output_max - log2_output_min)
+    )
+
+    mapped_intensity_value = 2 ** mapped_log2_intensity
+    return mapped_intensity_value
+
 class Peak():
     def __init__(self, options, mz, intensity, ms_level = 1):
         self.ms_level = ms_level
@@ -305,12 +423,10 @@ class SyntheticPeptide():
         self.protein = 'None'
 
         if not options.preview:
-            self.intensity = 2 ** options.prosit_abundance_model(None, **{
-                'mu': options.prosit_peptide_abundance_mean,
-                'sig': options.prosit_peptide_abundance_stdev,
-                'emg_k': options.prosit_peptide_abundance_emg_k
-            })
+            self.intensity = convert_concentration_gl_to_synthedia_intensity(concentration_grams_per_liter=prosit_entry['precursorAbundance'].iloc[0])
+                
         else:
+            logging.getLogger("assembly_logger").info("Using preview abundance instead of prosit abundance for peptide %s", self.sequence)
             self.intensity = float(options.preview_abundance)
 
         self.ms2_mzs = [float(_) for _ in prosit_entry['FragmentMz'].to_list()]
