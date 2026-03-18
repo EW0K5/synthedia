@@ -34,11 +34,14 @@ def convert_concentration_gl_to_synthedia_intensity(
     try:
         parsed_concentration_gl = float(concentration_grams_per_liter)
     except (TypeError, ValueError):
-        return 0.0
+        return output_min_intensity
 
     if not math.isfinite(parsed_concentration_gl) or parsed_concentration_gl <= 0:
         # Explicitly preserve biological zero as simulated zero.
-        return 0.0
+        logging.getLogger("assembly_logger").warning(
+            "Non-positive or non-finite concentration value %s treated as zero; returning output_min)_intensity=%s",
+            concentration_grams_per_liter, output_min_intensity)
+        return output_min_intensity
 
     safe_concentration_gl = max(parsed_concentration_gl, zero_guard_epsilon)
 
